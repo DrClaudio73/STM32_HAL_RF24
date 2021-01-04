@@ -45,7 +45,7 @@
 
 //TIM_HandleTypeDef htim1; moved into TimerRF24 class
 
-//UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
@@ -72,6 +72,33 @@ static inline uint32_t LL_SYSTICK_IsActiveCounterFlag(void);
   * @brief  The application entry point.
   * @retval int
   */
+#define NUM_BYTES 4
+uint8_t tx[NUM_BYTES];
+
+void printdata(uint8_t* dati){
+	for (int i=0 ; i< NUM_BYTES; i++){
+		printf(" %d",dati[i]);
+		if (i<(NUM_BYTES-1)){
+			printf(" -");
+		}
+	}
+	printf("\r\n");
+}
+
+int getfromSerial(char* ptr) {
+  HAL_StatusTypeDef hstatus;
+
+    hstatus = HAL_UART_Receive(&huart1, (uint8_t *) ptr, 1, 0xFF);
+    if (hstatus == HAL_OK){
+    	return 1;
+    }
+    else
+    {
+    	*ptr=0;
+    	return 0;
+    }
+}
+
 int main(void)
 {
   /* USER CODE BEGIN 1 */
@@ -100,12 +127,24 @@ int main(void)
   //MX_USART1_UART_Init();
   //MX_TIM1_Init(); moved into TimerRF24 class
   /* USER CODE BEGIN 2 */
-  bool radioNumber = 0;
+	for (int i=0 ; i< NUM_BYTES; i++){
+		tx[i]=0;
+	}
+
+  bool radioNumber = 1;
   RF24 radio(ce_pin_GPIO_Port, ce_pin_Pin, csn_pin_GPIO_Port, csn_pin_Pin);
   uint8_t addresses[][6] = {"1Node","2Node"};
-  bool role = 1;
   radio.begin();
-  radio.setPALevel(RF24_PA_LOW);
+  huart1 = radio.uartRF24.gethUART();
+
+  radio.setAutoAck(1);                    // Ensure autoACK is enabled
+  radio.enableAckPayload();               // Allow optional ack payloads
+  radio.setDataRate(RF24_1MBPS);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.setRetries(15, 15);                // Smallest time between retries, max no. of retries
+  radio.setPayloadSize(NUM_BYTES);        // Here we are sending NUM_BYTES-bytes payloads to test the call-response speed
+
+
   if(radioNumber){
       radio.openWritingPipe(addresses[1]);
       radio.openReadingPipe(1,addresses[0]);
@@ -113,123 +152,138 @@ int main(void)
       radio.openWritingPipe(addresses[0]);
       radio.openReadingPipe(1,addresses[1]);
     }
+
   radio.startListening();
+  radio.printDetails();
+  printf("RF24/examples/GettingStarted -- STM32\r\n");
+  printf("*** PRESS 'T' to begin transmitting to the other node\r\n");
+  radio.printPrettyDetails();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  char formato[255];
-  char testo[255];
-
+  bool role = 0;
   while (1)
   {
+	  /*
+	  char buf[1025],buf2[1025];
+	  memset(buf,0,1025);
+	  printf("\r\nYour name: ");
+	  scanf("%s %s", buf,buf2);
+	  printf("\r\nHello, %s %s!\r\n", buf,buf2);*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 	  if (role == 1)  {
 
 		  radio.stopListening();                                    // First, stop listening so we can talk.
-		  strcpy(formato,"%s \r\n");
-		  strcpy(testo,"Now sending \r\n");
-		  radio.print(formato,testo);
-		  //Serial.println(F("Now sending"));
+
+		  printf(" \r\nNow sending");
+		  tx[0]=tx[0]+1;
+		  for (int i= 1; i<NUM_BYTES; i++){
+			  tx[i]=tx[i-1]+1;
+		  }
+		  printdata(tx);
 
 		  unsigned long start_time = getCurrentMicros();                             // Take the time, and send it.  This will block until complete
-		  if (!radio.write( &start_time, sizeof(unsigned long) )){
-			  strcpy(formato,"%s \r\n");
-			  strcpy(testo,"failed \r\n");
-			  radio.print(formato,testo);
-			  //Serial.println(F("failed"));
+
+		  if (!radio.write( &tx, NUM_BYTES )){
+			  printf("failed\r\n");
+		  } else {
+			  printf("sent ok!\r\n");
 		  }
 
 		  radio.startListening();                                    // Now, continue listening
 
 		  unsigned long started_waiting_at = getCurrentMicros();               // Set up a timeout period, get the current microseconds
+		  unsigned long istante;
 		  bool timeout = false;                                   // Set up a variable to indicate if a response was received or not
 
 		  while ( ! radio.available() ){                             // While nothing is received
-			  if (getCurrentMicros() - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
+			  istante = getCurrentMicros();
+			  if (istante - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
 				  timeout = true;
 				  break;
 			  }
 		  }
 
 		  if ( timeout ){                                             // Describe the results
-			  strcpy(formato,"%s\r\n");
-			  strcpy(testo,"Failed, response timed out. \r\n");
-			  radio.print(formato,testo);
-
-			  //Serial.println(F("Failed, response timed out."));
-			  ;
+			  printf("Failed, response timed out. \r\n");
 		  }else{
-			  unsigned long got_time;                                 // Grab the response, compare, and send to debugging spew
-			  radio.read( &got_time, sizeof(unsigned long) );
-			  unsigned long end_time = getCurrentMicros();
-			  if (end_time > start_time)
-				  delay(1);
-			  sprintf(formato, "Sent %lu Got response %lu, Round-trip delay %lu microseconds", start_time, got_time, end_time-start_time);
-			  strcpy(testo,"");
-			  radio.print(formato,testo);
-			  /* Spew it
-			  Serial.print(F("Sent "));
-			  Serial.print(start_time);
-			  Serial.print(F(", Got response "));
-			  Serial.print(got_time);
-			  Serial.print(F(", Round-trip delay "));
-			  Serial.print(end_time-start_time);
-			  Serial.println(F(" microseconds"));*/
+			  printf("Success, time out has not been triggered. \r\n");
+		        uint8_t rx[NUM_BYTES];                                 // Grab the response, compare, and send to debugging spew
+		        for (int i=0 ; i< NUM_BYTES; i++){
+		          rx[i]=0;
+		        }
+		        radio.read( &rx, NUM_BYTES );
+		        printf("Sent:\t\t");
+		        printdata(tx);
+		        printf("Got response:\t");
+		        printdata(rx);
+		        //printf(", Round-trip delay \r\n");
+		        //printf(end_time-start_time);
+		        //printfln(" microseconds");
 		  }
 
 		  // Try again 1s later
 		  delay(1000);
 	  }
 
-
-
 	  /****************** Pong Back Role ***************************/
 
 	  if ( role == 0 )
 	  {
-		  unsigned long got_time;
-
+		  //unsigned long got_time;
+		  uint8_t rx[NUM_BYTES];                                 // Grab the response, compare, and send to debugging spew
+		  for (int i=0 ; i< NUM_BYTES; i++){
+			  rx[i]=0;
+		  }
 		  if( radio.available()){
-			  // Variable for the received timestamp
-			  while (radio.available()) {                                   // While there is data ready
-				  radio.read( &got_time, sizeof(unsigned long) );             // Get the payload
+			  while (radio.available()) {             // While there is data ready
+				  radio.read( &rx, NUM_BYTES );       // Get the payload
 			  }
-
 			  radio.stopListening();                                        // First, stop listening so we can talk
-			  radio.write( &got_time, sizeof(unsigned long) );              // Send the final one back.
+			  radio.write( &rx, NUM_BYTES );              // Send the final one back.
 			  radio.startListening();                                       // Now, resume listening so we catch the next packets.
-			  sprintf(formato, "Sent response %lu", got_time);
-			  strcpy(testo,"");
-			  radio.print(formato,testo);
-
-			  //Serial.print(F("Sent response "));
-			  //Serial.println(got_time);
+			  printf("Sent response: ");
+			  printdata(rx);
+			  //printf(got_time);
 		  }
 	  }
 
-
-
-
 	  /****************** Change Roles via Serial Commands ***************************/
-	  /*
-	  if ( Serial.available() )
+	  uint8_t c;
+	  //scanf("%c", &c );
+	  //c=getFromSerial();
+	  c=getchar();
+	  //printf("YOU TYPED %c %d\r\n",c,c);
+	  if (1)
 	  {
-		  char c = toupper(Serial.read());
-		  if ( c == 'T' && role == 0 ){
-			  Serial.println(F("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK"));
+		  //uint8_t c = buf[0];
+		  //char c = toupper(Serial.read());
+		  if ( (c == 'T' || c=='t') && role == 0 ){
+		  	  tx[0]=0;
+		  	  printf("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK\r\n");
 			  role = 1;                  // Become the primary transmitter (ping out)
+			  c=0;
 
 		  }else
-			  if ( c == 'R' && role == 1 ){
-				  Serial.println(F("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK"));
+			  if ( (c == 'R' || c == 'r') && role == 1 ){
+			  	  tx[0]=0;
+			  	  printf("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK\r\n");
 				  role = 0;                // Become the primary receiver (pong back)
 				  radio.startListening();
-
+				  c=0;
+			  }else {
+				    if ( (c == 'P' || c == 'p')  ){
+				      printf("*** PRINTIG DEBUG INFO ***\r\n");
+				      radio.printDetails();                   // Dump the configuration of the rf unit for debugging
+				      printf("*** ***** ***");
+				      radio.printPrettyDetails();
+				    }
 			  }
-	  }*/
+	  }
   }
   /* USER CODE END 3 */
 }

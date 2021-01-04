@@ -29,8 +29,8 @@ public:
     UART_HandleTypeDef huartRF24;
     HAL_StatusTypeDef transmit(char* tbuf, size_t len);
     HAL_StatusTypeDef receive(char* tbuf, size_t len);
-    void print(char* format,char *param1);
-
+    void print(const char* format,const char *param1);
+    UART_HandleTypeDef gethUART(void);
 private:
     bool uartIsInitialized = false;
     void init(void);

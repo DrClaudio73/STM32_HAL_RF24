@@ -32,6 +32,9 @@ UART_RF24::UART_RF24()
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 }
+UART_HandleTypeDef UART_RF24::gethUART(void){
+	return (huartRF24);
+}
 
 void UART_RF24::begin()
 {
@@ -82,7 +85,7 @@ HAL_StatusTypeDef UART_RF24::receive(char* rbuf, size_t len)
 	return HAL_UART_Receive(&huartRF24,rxbuf, len2, 2000);
 }
 
-void UART_RF24::print(char* format,char *param1){
+void UART_RF24::print(const char* format,const char *param1){
 	char loc_buf[555];
 	sprintf(loc_buf, format, param1);
 	transmit(loc_buf, strlen((char *) param1));

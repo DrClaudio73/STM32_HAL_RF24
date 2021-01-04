@@ -30,13 +30,27 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/times.h>
-
+#include "main.h"
 
 /* Variables */
 //#undef errno
 extern int errno;
-extern int __io_putchar(int ch) __attribute__((weak));
-extern int __io_getchar(void) __attribute__((weak));
+//extern int __io_putchar(int ch) __attribute__((weak));
+extern UART_HandleTypeDef huart1; // access huart1 instance
+
+__attribute__((weak)) int __io_putchar(int ch)
+{
+    HAL_StatusTypeDef status = HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+    return (status == HAL_OK ? ch : 0);
+}
+
+//extern int __io_getchar(void) __attribute__((weak));
+__attribute__((weak)) int __io_getchar(void)
+{
+	uint8_t ch=0;
+    HAL_StatusTypeDef status = HAL_UART_Receive(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+    return (status == HAL_OK ? ch : 0);
+}
 
 register char * stack_ptr asm("sp");
 
@@ -65,18 +79,49 @@ void _exit (int status)
 	_kill(status, -1);
 	while (1) {}		/* Make sure we hang here */
 }
+#define STDIN_FILENO 0
 
+int _read(int fd, char* ptr, int len) {
+  HAL_StatusTypeDef hstatus;
+
+  if (fd == STDIN_FILENO) {
+    hstatus = HAL_UART_Receive(&huart1, (uint8_t *) ptr, 1, 0xFF);
+    if (hstatus == HAL_OK)
+    	return 1;
+    else
+    {
+    	*ptr=0;
+    	errno = EIO;
+    	return -1;
+    }
+  }
+  errno = EBADF;
+  return -1;
+}
+
+/*
 __attribute__((weak)) int _read(int file, char *ptr, int len)
 {
 	int DataIdx;
 
 	for (DataIdx = 0; DataIdx < len; DataIdx++)
 	{
-		*ptr++ = __io_getchar();
+		HAL_StatusTypeDef status;
+		status = __io_getchar();
+		if (status > 0){
+			if (status==10){
+				*ptr++=0;
+				return 0;
+			} else {
+				*ptr++=status;
+				return 1;
+			}
+		} else
+		      return 0;
 	}
-
+		// *ptr++ = __io_getchar();
 return len;
-}
+}*/
 
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
