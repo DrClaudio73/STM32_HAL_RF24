@@ -144,7 +144,6 @@ int main(void)
   radio.setRetries(15, 15);                // Smallest time between retries, max no. of retries
   radio.setPayloadSize(NUM_BYTES);        // Here we are sending NUM_BYTES-bytes payloads to test the call-response speed
 
-
   if(radioNumber){
       radio.openWritingPipe(addresses[1]);
       radio.openReadingPipe(1,addresses[0]);
