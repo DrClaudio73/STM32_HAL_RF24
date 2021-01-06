@@ -72,7 +72,7 @@ static inline uint32_t LL_SYSTICK_IsActiveCounterFlag(void);
   * @brief  The application entry point.
   * @retval int
   */
-#define NUM_BYTES 4
+#define NUM_BYTES 32
 uint8_t tx[NUM_BYTES];
 
 void printdata(uint8_t* dati){
@@ -138,9 +138,9 @@ int main(void)
   huart1 = radio.uartRF24.gethUART();
 
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  radio.enableAckPayload();               // Allow optional ack payloads
-  radio.setDataRate(RF24_1MBPS);
-  radio.setPALevel(RF24_PA_MIN);
+  //radio.enableAckPayload();               // Allow optional ack payloads
+  radio.setDataRate(RF24_2MBPS);
+  radio.setPALevel(RF24_PA_HIGH);
   radio.setRetries(15, 15);                // Smallest time between retries, max no. of retries
   radio.setPayloadSize(NUM_BYTES);        // Here we are sending NUM_BYTES-bytes payloads to test the call-response speed
 
@@ -220,13 +220,14 @@ int main(void)
 		        printdata(tx);
 		        printf("Got response:\t");
 		        printdata(rx);
+		        radio.flush_tx();
 		        //printf(", Round-trip delay \r\n");
 		        //printf(end_time-start_time);
 		        //printfln(" microseconds");
 		  }
 
 		  // Try again 1s later
-		  delay(1000);
+		  //delay(100);
 	  }
 
 	  /****************** Pong Back Role ***************************/
@@ -262,6 +263,7 @@ int main(void)
 		  //uint8_t c = buf[0];
 		  //char c = toupper(Serial.read());
 		  if ( (c == 'T' || c=='t') && role == 0 ){
+			  radio.flush_tx();
 		  	  tx[0]=0;
 		  	  printf("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK\r\n");
 			  role = 1;                  // Become the primary transmitter (ping out)
@@ -269,6 +271,7 @@ int main(void)
 
 		  }else
 			  if ( (c == 'R' || c == 'r') && role == 1 ){
+				  radio.flush_tx();
 			  	  tx[0]=0;
 			  	  printf("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK\r\n");
 				  role = 0;                // Become the primary receiver (pong back)
