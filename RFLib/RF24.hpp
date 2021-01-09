@@ -17,7 +17,7 @@
 
 #include "RF24_config.hpp"
 #include "SPI_RF24.hpp"
-#include "TimerRF24.hpp"
+//#include "TimerRF24.hpp"
 #include "UART_RF24.hpp"
 
 #if defined (RF24_LINUX) || defined (LITTLEWIRE)
@@ -148,7 +148,7 @@ private:
     uint8_t config_reg; /**< For storing the value of the NRF_CONFIG register */
     bool _is_p_variant; /** For storing the result of testing the toggleFeatures() affect */
     void pinModeRF24_ce_csn(void); //mio
-    TIMER_RF24 timerRF24; //mio
+    //TIMER_RF24 timerRF24; //mio
     SPI_RF24 spiRF24; //mio
     //UART_RF24 uartRF24; //mio
 protected:
@@ -1764,16 +1764,18 @@ private:
     #if defined (FAILURE_HANDLING) || defined (RF24_LINUX)
 
     void errNotify(void);
+#endif
     //added by me
     void digitalWrite(uint16_t pin, bool value); //mio
 
-    void delayMicroseconds(uint16_t csDelay); //mio
+    void delayMicroseconds(uint32_t csDelay); //mio
 
     uint32_t millis(void);//mio
-    #endif
+public:
+    uint32_t getCurrentMicros(void);
 
+    inline uint32_t LL_SYSTICK_IsActiveCounterFlag(void);
     /**@}*/
-
 };
 
 

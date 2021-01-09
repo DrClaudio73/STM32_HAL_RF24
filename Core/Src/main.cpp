@@ -56,8 +56,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 //static void MX_SPI1_Init(void); moved into SPI class
 //static void MX_USART1_UART_Init(void);
-uint32_t getCurrentMicros(void);
-static inline uint32_t LL_SYSTICK_IsActiveCounterFlag(void);
+/*uint32_t getCurrentMicros(void);
+static inline uint32_t LL_SYSTICK_IsActiveCounterFlag(void);*/
 //static void MX_TIM1_Init(void); moved into TimerRF24 Class
 /* USER CODE BEGIN PFP */
 
@@ -98,6 +98,49 @@ int getfromSerial(char* ptr) {
     	return 0;
     }
 }
+//int mmmk=0; test for bulk transfer
+//int err=0; test for bulk transfer
+#define AUTO_ACK_MIO 1
+#define AIR_DATA_RATE_MIO RF24_2MBPS
+#define PA_LEVEL_MIO RF24_PA_MIN
+#define AR_DELAY_MIO 1
+#define MAX_ARC_MIO 15
+#define NUM_RADIOS_MIO 2
+#define ADDR_W_MIO 5
+int re_begin(RF24* radio, bool radioNumber, uint8_t addresses[NUM_RADIOS_MIO][ADDR_W_MIO+1], bool *role){
+	bool beginOK = radio->begin();
+
+	if (beginOK){
+		printf("Radio Begin OK!\r\n");
+	} else {
+		printf("RADIO BEGIN KO!\r\n");
+		return 0;
+	}
+
+	radio->setAutoAck(AUTO_ACK_MIO);                    // Ensure autoACK is enabled
+	//radio->enableAckPayload();               // Allow optional ack payloads
+	radio->setDataRate(AIR_DATA_RATE_MIO);
+	radio->setPALevel(PA_LEVEL_MIO );
+	radio->setRetries(AR_DELAY_MIO, MAX_ARC_MIO);                // Smallest time between retries, max no. of retries
+	radio->setPayloadSize(NUM_BYTES);        // Here we are sending NUM_BYTES-bytes payloads to test the call-response speed
+
+	if(radioNumber){
+		radio->openWritingPipe(addresses[1]);
+		radio->openReadingPipe(1,addresses[0]);
+	}else{
+		radio->openWritingPipe(addresses[0]);
+		radio->openReadingPipe(1,addresses[1]);
+	}
+
+	radio->startListening();
+	radio->printDetails();
+	printf("RF24/examples/GettingStarted -- STM32\r\n");
+	printf("*** PRESS 'T' to begin transmitting to the other node\r\n");
+	radio->printPrettyDetails();
+	*role = 0;
+
+	return beginOK;
+}
 
 int main(void)
 {
@@ -132,16 +175,30 @@ int main(void)
 	}
 
   bool radioNumber = 1;
+  bool role = 0;
   RF24 radio(ce_pin_GPIO_Port, ce_pin_Pin, csn_pin_GPIO_Port, csn_pin_Pin);
-  uint8_t addresses[][6] = {"1Node","2Node"};
-  radio.begin();
   huart1 = radio.uartRF24.gethUART();
+  uint8_t addresses[NUM_RADIOS_MIO][ADDR_W_MIO+1] = {"1Node","2Node"};
 
-  radio.setAutoAck(1);                    // Ensure autoACK is enabled
+  bool beginOK = re_begin(&radio, radioNumber, addresses, &role);
+  if (beginOK){
+	  printf("Radio Begin OK!\r\n");
+  } else {
+	  printf("RADIO BEGIN KO!\r\n");
+  }
+  /*bool beginOK = radio.begin();
+
+  if (beginOK){
+	  printf("Radio Begin OK!\r\n");
+  } else {
+	  printf("RADIO BEGIN KO!\r\n");
+  }
+
+  radio.setAutoAck(AUTO_ACK_MIO);                    // Ensure autoACK is enabled
   //radio.enableAckPayload();               // Allow optional ack payloads
-  radio.setDataRate(RF24_2MBPS);
-  radio.setPALevel(RF24_PA_HIGH);
-  radio.setRetries(15, 15);                // Smallest time between retries, max no. of retries
+  radio.setDataRate(AIR_DATA_RATE_MIO);
+  radio.setPALevel(PA_LEVEL_MIO );
+  radio.setRetries(AR_DELAY_MIO, MAX_ARC_MIO);                // Smallest time between retries, max no. of retries
   radio.setPayloadSize(NUM_BYTES);        // Here we are sending NUM_BYTES-bytes payloads to test the call-response speed
 
   if(radioNumber){
@@ -157,12 +214,11 @@ int main(void)
   printf("RF24/examples/GettingStarted -- STM32\r\n");
   printf("*** PRESS 'T' to begin transmitting to the other node\r\n");
   radio.printPrettyDetails();
-
+*/
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  bool role = 0;
   while (1)
   {
 	  /*
@@ -177,6 +233,7 @@ int main(void)
 	  if (role == 1)  {
 
 		  radio.stopListening();                                    // First, stop listening so we can talk.
+		  //radio.printPrettyDetails();
 
 		  printf(" \r\nNow sending");
 		  tx[0]=tx[0]+1;
@@ -185,7 +242,7 @@ int main(void)
 		  }
 		  printdata(tx);
 
-		  unsigned long start_time = getCurrentMicros();                             // Take the time, and send it.  This will block until complete
+		  unsigned long start_time = radio.getCurrentMicros();                             // Take the time, and send it.  This will block until complete
 
 		  if (!radio.write( &tx, NUM_BYTES )){
 			  printf("failed\r\n");
@@ -195,12 +252,12 @@ int main(void)
 
 		  radio.startListening();                                    // Now, continue listening
 
-		  unsigned long started_waiting_at = getCurrentMicros();               // Set up a timeout period, get the current microseconds
+		  unsigned long started_waiting_at = radio.getCurrentMicros();               // Set up a timeout period, get the current microseconds
 		  unsigned long istante;
 		  bool timeout = false;                                   // Set up a variable to indicate if a response was received or not
 
 		  while ( ! radio.available() ){                             // While nothing is received
-			  istante = getCurrentMicros();
+			  istante = radio.getCurrentMicros();
 			  if (istante - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
 				  timeout = true;
 				  break;
@@ -216,11 +273,11 @@ int main(void)
 		          rx[i]=0;
 		        }
 		        radio.read( &rx, NUM_BYTES );
-		        printf("Sent:\t\t");
-		        printdata(tx);
+		        //printf("Sent:\t\t");
+		        //printdata(tx);
 		        printf("Got response:\t");
 		        printdata(rx);
-		        radio.flush_tx();
+		        //radio.flush_tx();
 		        //printf(", Round-trip delay \r\n");
 		        //printf(end_time-start_time);
 		        //printfln(" microseconds");
@@ -242,10 +299,18 @@ int main(void)
 		  if( radio.available()){
 			  while (radio.available()) {             // While there is data ready
 				  radio.read( &rx, NUM_BYTES );       // Get the payload
+				  //printf("OK%d\r\n",mmmk++);
+				  //printdata(rx);
 			  }
+
+			  //err=err+1;
+			  //printf("err%d\r\n",err);
+
+
 			  radio.stopListening();                                        // First, stop listening so we can talk
 			  radio.write( &rx, NUM_BYTES );              // Send the final one back.
 			  radio.startListening();                                       // Now, resume listening so we catch the next packets.
+
 			  printf("Sent response: ");
 			  printdata(rx);
 			  //printf(got_time);
@@ -260,29 +325,41 @@ int main(void)
 	  //printf("YOU TYPED %c %d\r\n",c,c);
 	  if (1)
 	  {
-		  //uint8_t c = buf[0];
-		  //char c = toupper(Serial.read());
 		  if ( (c == 'T' || c=='t') && role == 0 ){
 			  radio.flush_tx();
-		  	  tx[0]=0;
+			  radio.flush_rx();
+			  tx[0]=0;
 		  	  printf("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK\r\n");
 			  role = 1;                  // Become the primary transmitter (ping out)
 			  c=0;
 
-		  }else
+		  } else
 			  if ( (c == 'R' || c == 'r') && role == 1 ){
 				  radio.flush_tx();
+				  radio.flush_rx();
 			  	  tx[0]=0;
 			  	  printf("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK\r\n");
 				  role = 0;                // Become the primary receiver (pong back)
 				  radio.startListening();
 				  c=0;
-			  }else {
+			  } else {
 				    if ( (c == 'P' || c == 'p')  ){
-				      printf("*** PRINTIG DEBUG INFO ***\r\n");
-				      radio.printDetails();                   // Dump the configuration of the rf unit for debugging
-				      printf("*** ***** ***");
-				      radio.printPrettyDetails();
+				    	radio.flush_tx();
+				    	radio.flush_rx();
+				    	printf("*** PRINTIG DEBUG INFO ***\r\n");
+				    	radio.printDetails();                   // Dump the configuration of the rf unit for debugging
+				    	printf("*** ***** ***");
+				    	radio.printPrettyDetails();
+				    } else {
+					    if ( (c == 'B' || c == 'b')  ){
+					    	radio.flush_tx();
+					    	radio.flush_rx();
+					    	printf("*** RE-INIT RADIO MODULE***\r\n");
+					    	re_begin(&radio, radioNumber,addresses,&role);
+					    	radio.printDetails();                   // Dump the configuration of the rf unit for debugging
+					    	printf("*** ***** ***");
+					    	radio.printPrettyDetails();
+					    }
 				    }
 			  }
 	  }
@@ -448,10 +525,10 @@ static void MX_GPIO_Init(void)
 */
 }
 
-/* USER CODE BEGIN 4 */
+/* USER CODE BEGIN 4
 uint32_t getCurrentMicros(void)
 {
-  /* Ensure COUNTFLAG is reset by reading SysTick control and status register */
+  // Ensure COUNTFLAG is reset by reading SysTick control and status register
   LL_SYSTICK_IsActiveCounterFlag();
   uint32_t m = HAL_GetTick();
   const uint32_t tms = SysTick->LOAD + 1;
@@ -467,7 +544,7 @@ static inline uint32_t LL_SYSTICK_IsActiveCounterFlag(void)
 {
   return ((SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk) == (SysTick_CTRL_COUNTFLAG_Msk));
 }
-
+*/
 /* USER CODE END 4 */
 
 /**

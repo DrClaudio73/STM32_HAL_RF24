@@ -55,7 +55,8 @@ extern "C" {
  * know your radio's hardware is, in fact, genuine and reliable.
  */
 #if !defined(RF24_POWERUP_DELAY)
-#define RF24_POWERUP_DELAY	5000
+//#define RF24_POWERUP_DELAY	5000
+#define RF24_POWERUP_DELAY_MS	 5
 #endif
 /**********************/
 #define rf24_max(a,b) (a>b?a:b)

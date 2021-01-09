@@ -1,9 +1,0 @@
-UART_RF24.cpp:15:1:UART_RF24::UART_RF24()	40	static
-UART_RF24.cpp:35:20:UART_HandleTypeDef UART_RF24::gethUART()	24	static
-UART_RF24.cpp:39:6:void UART_RF24::begin()	16	static
-UART_RF24.cpp:50:6:void UART_RF24::init()	16	static
-UART_RF24.cpp:55:1:UART_RF24::~UART_RF24()	16	static
-UART_RF24.cpp:66:19:HAL_StatusTypeDef UART_RF24::transmit(char*, size_t)	32	static
-UART_RF24.cpp:77:19:HAL_StatusTypeDef UART_RF24::receive(char*, size_t)	32	static
-UART_RF24.cpp:88:6:void UART_RF24::print(const char*, const char*)	584	static
-UART_RF24.cpp:94:6:void UART_RF24::MX_USART1_UART_Init()	16	static

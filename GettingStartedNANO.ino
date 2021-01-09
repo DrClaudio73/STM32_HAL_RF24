@@ -44,7 +44,7 @@ void setup() {
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
   //radio.enableAckPayload();               // Allow optional ack payloads
   radio.setDataRate(RF24_2MBPS);
-  radio.setPALevel(RF24_PA_HIGH);
+  radio.setPALevel(RF24_PA_MIN);
   
   radio.setRetries(15, 15);                // Smallest time between retries, max no. of retries
   radio.setPayloadSize(NUM_BYTES);                // Here we are sending 1-byte payloads to test the call-response speed
@@ -72,7 +72,7 @@ void printdata(uint8_t* dati) {
   for (int i = 0 ; i < NUM_BYTES; i++) {
     Serial.print(dati[i]);
     if (i < (NUM_BYTES - 1)) {
-      Serial.print(" -");
+      Serial.print(" - ");
     }
   }
   Serial.println(" ");
@@ -85,8 +85,6 @@ void loop() {
   if (role == 1)  {
 
     radio.stopListening();                                    // First, stop listening so we can talk.
-
-
     Serial.println(F("Now sending"));
     tx[0] = tx[0] + 1;
     for (int i = 1; i < NUM_BYTES; i++) {
@@ -96,6 +94,16 @@ void loop() {
 
     unsigned long start_time = micros();                             // Take the time, and send it.  This will block until complete
 
+    /*
+    for (int i =0; i< 1000; i++){
+      if (!radio.write( &tx, NUM_BYTES )) {
+        Serial.println(F("failed"));
+      } else {
+        //Serial.println(F("sent OK!"));
+      }
+      tx[0]=tx[0]+1;
+    }*/
+    
     if (!radio.write( &tx, NUM_BYTES )) {
       Serial.println(F("failed"));
     } else {
@@ -123,17 +131,15 @@ void loop() {
         rx[i] = 0;
       }
       radio.read( &rx, NUM_BYTES );
-      printf("Sent:\t\t");
-      printdata(tx);
+      //printf("Sent:\t\t");
+      //printdata(tx);
       printf("Got response:\t");
       printdata(rx);
     }
 
     // Try again 1s later
-    //delay(100);
+    //delay(10);
   }
-
-
 
   /****************** Pong Back Role ***************************/
 
@@ -149,13 +155,13 @@ void loop() {
       // Variable for the received timestamp
       while (radio.available()) {                                   // While there is data ready
          radio.read( &rx, NUM_BYTES );       // Get the payload
-        }
+      }
         radio.stopListening();                                        // First, stop listening so we can talk
         radio.write( &rx, NUM_BYTES );              // Send the final one back.
         radio.startListening();                                       // Now, resume listening so we catch the next packets.
         printf("Sent response: ");
         printdata(rx);
-      }
+    }
   }        
         
     char c=toupper(Serial.read());

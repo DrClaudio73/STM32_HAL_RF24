@@ -1,7 +1,0 @@
-SPI_RF24.cpp:15:1:SPI_RF24::SPI_RF24()	40	static
-SPI_RF24.cpp:39:6:void SPI_RF24::begin(uint32_t)	16	static
-SPI_RF24.cpp:50:6:void SPI_RF24::init(uint32_t)	16	static
-SPI_RF24.cpp:55:9:uint8_t SPI_RF24::transfer(uint8_t)	32	static
-SPI_RF24.cpp:63:6:void SPI_RF24::transfernb(char*, char*, uint32_t)	48	static
-SPI_RF24.cpp:74:1:SPI_RF24::~SPI_RF24()	16	static
-SPI_RF24.cpp:86:6:void SPI_RF24::MX_SPI1_Init()	16	static

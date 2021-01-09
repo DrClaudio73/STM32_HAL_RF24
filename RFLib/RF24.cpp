@@ -12,7 +12,7 @@
 
 #include "nRF24L01.hpp"
 #include "RF24_config.hpp"
-
+//#include "main.h" //da rimuovere usato solo per il test di delayMicroseconds
 /****************************************************************************/
 
 void RF24::csn(bool mode)
@@ -646,7 +646,7 @@ void RF24::printPrettyDetails(void) {
     "\r\n"), (char*)pgm_read_ptr(&rf24_feature_e_str_P[(bool)(autoAck & 1) * 1]));
 
     config_reg = read_register(NRF_CONFIG);
-    printf_P(PSTR("Primary Mode\t\t= %cX\r\n"), config_reg & _BV(PWR_UP) ? 'T' : 'R');
+    printf_P(PSTR("Primary Mode\t\t= %cX\r\n"), config_reg & _BV(PRIM_RX) ? 'R' : 'T');
     print_address_register(PSTR("TX address\t"), TX_ADDR);
 
     uint8_t openPipes = read_register(EN_RXADDR);
@@ -716,12 +716,20 @@ bool RF24::begin(void)
       if (ce_pin != csn_pin) {
     	  pinModeRF24_ce_csn(); //mio
       }
-      timerRF24.begin(); //mio
+      //timerRF24.begin(); //mio
       uartRF24.begin(); //mio
       printf("Ciao uart e timer inizializzati\r\n"); //mio
       _SPI.begin();
       ce(LOW);
       csn(HIGH);
+      /*uint16_t i= 10;
+      while(1){
+    	  	//i=(i+256)%65535;
+    	  	HAL_GPIO_WritePin(ce_pin_GPIO_Port,ce_pin_Pin,(GPIO_PinState) HIGH);
+         	delayMicroseconds(i);
+         	HAL_GPIO_WritePin(ce_pin_GPIO_Port,ce_pin_Pin,(GPIO_PinState) LOW);
+         	delayMicroseconds(100-i);
+      }*/
       #if defined(__ARDUINO_X86__)
         delay(100);
       #endif
@@ -738,6 +746,7 @@ bool RF24::begin(void)
     // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make testing a little easier
     // WARNING: If this is ever lowered, either 250KBS mode with AA is broken or maximum packet
     // sizes must never be used. See datasheet for a more complete explanation.
+    powerDown();
     setRetries(5, 15);
 
     // Then set the data rate to the slowest (and most reliable) speed supported by all
@@ -782,7 +791,7 @@ bool RF24::begin(void)
     // Clear CONFIG register:
     //      Reflect all IRQ events on IRQ pin
     //      Enable PTX
-    //      Power Up
+    //      Power Up (??????) in a successive instruction
     //      16-bit CRC (CRC required by auto-ack)
     // Do not write CE high so radio will remain in standby I mode
     // PTX should use only 22uA of power
@@ -876,7 +885,8 @@ void RF24::powerUp(void)
         // For nRF24L01+ to go from power down mode to TX or RX mode it must first pass through stand-by mode.
         // There must be a delay of Tpd2stby (see Table 16.) after the nRF24L01+ leaves power down mode before
         // the CEis set high. - Tpd2stby can be up to 5ms per the 1.0 datasheet
-        delayMicroseconds(RF24_POWERUP_DELAY);
+        //delayMicroseconds(RF24_POWERUP_DELAY);
+        delay(RF24_POWERUP_DELAY_MS);
     }
 }
 
@@ -911,7 +921,7 @@ bool RF24::write(const void* buf, uint8_t len, const bool multicast)
 
     while (!(get_status() & (_BV(TX_DS) | _BV(MAX_RT)))) {
         #if defined(FAILURE_HANDLING) || defined(RF24_LINUX)
-        if (millis() - timer > 95) {
+        if ((millis() - timer) > 95) {
             errNotify();
             #if defined(FAILURE_HANDLING)
             return 0;
@@ -1673,8 +1683,6 @@ void RF24::stopConstCarrier()
 
 
 //da qui in avanti sono mie
-
-
 void RF24::digitalWrite(uint16_t pin, bool value){
 	if (pin == ce_pin){
 		HAL_GPIO_WritePin(ce_port, ce_pin, (GPIO_PinState) value);
@@ -1684,21 +1692,25 @@ void RF24::digitalWrite(uint16_t pin, bool value){
 	}
 }
 
-void RF24::delayMicroseconds(uint16_t us){
-	HAL_Delay(1); // da cancellare
-	return; // da cancellare
-
+void RF24::delayMicroseconds(uint32_t us){
+	uint32_t entryTime = getCurrentMicros();
+	while ((getCurrentMicros() - entryTime) < us);
+	//printf("\r\nentry: %lu, getCurrentMicros()= %lu, us=%d\r\n", entryTime, getCurrentMicros() , us);
+	return;
+	/*
 	timerRF24.setCNT(0); //da mettere come .setCNT(0)
-	//__HAL_TIM_SET_COUNTER(&(timerRF24.htim_us),1);  // set the counter value a 0
+	//__HAL_TIM_SET_COUNTER(&(timerRF24.htim_us),0);  // set the counter value a 0
 	uint16_t counter = timerRF24.getCNT();
 
-	while (counter < us){
+	while (counter < (us)){
 		counter = timerRF24.getCNT();  // wait for the counter to reach the us input in the parameter
 	}
+	return;*/
 }
 
 uint32_t RF24::millis(void){
-	return (timerRF24.getCNT()*1000);
+	//return (timerRF24.getCNT()/1000);
+	return (getCurrentMicros()/1000);
 }
 
 void RF24::pinModeRF24_ce_csn(void){
@@ -1744,4 +1756,21 @@ void RF24::pinModeRF24_ce_csn(void){
 	HAL_GPIO_Init(ce_port, &GPIO_InitStruct);
 }
 
+uint32_t RF24::getCurrentMicros(void)
+{
+  /* Ensure COUNTFLAG is reset by reading SysTick control and status register */
+  LL_SYSTICK_IsActiveCounterFlag();
+  uint32_t m = HAL_GetTick();
+  const uint32_t tms = SysTick->LOAD + 1;
+  __IO uint32_t u = tms - SysTick->VAL;
+  if (LL_SYSTICK_IsActiveCounterFlag()) {
+    m = HAL_GetTick();
+    u = tms - SysTick->VAL;
+  }
+  return (m * 1000 + (u * 1000) / tms);
+}
 
+inline uint32_t RF24::LL_SYSTICK_IsActiveCounterFlag(void)
+{
+  return ((SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk) == (SysTick_CTRL_COUNTFLAG_Msk));
+}
