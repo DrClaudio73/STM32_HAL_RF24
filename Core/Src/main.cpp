@@ -73,12 +73,13 @@ static inline uint32_t LL_SYSTICK_IsActiveCounterFlag(void);*/
   * @retval int
   */
 #define NUM_BYTES 32
+typedef enum { role_ping_out = 1, role_pong_back } role_e;                // The various roles supported by this sketch
 uint8_t tx[NUM_BYTES];
 
-void printdata(uint8_t* dati){
-	for (int i=0 ; i< NUM_BYTES; i++){
+void printdata(uint8_t* dati, const uint8_t payload_size){
+	for (int i=0 ; i< payload_size; i++){
 		printf(" %d",dati[i]);
-		if (i<(NUM_BYTES-1)){
+		if (i<(payload_size-1)){
 			printf(" -");
 		}
 	}
@@ -103,11 +104,12 @@ int getfromSerial(char* ptr) {
 #define AUTO_ACK_MIO 1
 #define AIR_DATA_RATE_MIO RF24_2MBPS
 #define PA_LEVEL_MIO RF24_PA_MIN
-#define AR_DELAY_MIO 1
+#define AR_DELAY_MIO 5
 #define MAX_ARC_MIO 15
 #define NUM_RADIOS_MIO 2
 #define ADDR_W_MIO 5
-int re_begin(RF24* radio, bool radioNumber, uint8_t addresses[NUM_RADIOS_MIO][ADDR_W_MIO+1], bool *role){
+
+int re_begin(RF24* radio, bool radioNumber, uint8_t addresses[NUM_RADIOS_MIO][ADDR_W_MIO+1], role_e* role){
 	bool beginOK = radio->begin();
 
 	if (beginOK){
@@ -122,7 +124,7 @@ int re_begin(RF24* radio, bool radioNumber, uint8_t addresses[NUM_RADIOS_MIO][AD
 	radio->setDataRate(AIR_DATA_RATE_MIO);
 	radio->setPALevel(PA_LEVEL_MIO );
 	radio->setRetries(AR_DELAY_MIO, MAX_ARC_MIO);                // Smallest time between retries, max no. of retries
-	radio->setPayloadSize(NUM_BYTES);        // Here we are sending NUM_BYTES-bytes payloads to test the call-response speed
+	//radio->setPayloadSize(NUM_BYTES);        // Here we are sending NUM_BYTES-bytes payloads to test the call-response speed
 
 	if(radioNumber){
 		radio->openWritingPipe(addresses[1]);
@@ -132,12 +134,15 @@ int re_begin(RF24* radio, bool radioNumber, uint8_t addresses[NUM_RADIOS_MIO][AD
 		radio->openReadingPipe(1,addresses[1]);
 	}
 
+	radio->enableDynamicPayloads();
+	//radio->enableAckPayload();               // Allow optional ack payloads
+
 	radio->startListening();
 	radio->printDetails();
 	printf("RF24/examples/GettingStarted -- STM32\r\n");
 	printf("*** PRESS 'T' to begin transmitting to the other node\r\n");
 	radio->printPrettyDetails();
-	*role = 0;
+	*role = role_pong_back;
 
 	return beginOK;
 }
@@ -175,7 +180,7 @@ int main(void)
 	}
 
   bool radioNumber = 1;
-  bool role = 0;
+  role_e role = role_pong_back;
   RF24 radio(ce_pin_GPIO_Port, ce_pin_Pin, csn_pin_GPIO_Port, csn_pin_Pin);
   huart1 = radio.uartRF24.gethUART();
   uint8_t addresses[NUM_RADIOS_MIO][ADDR_W_MIO+1] = {"1Node","2Node"};
@@ -219,6 +224,11 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  const uint8_t min_payload_size = 4;
+  const uint8_t max_payload_size = NUM_BYTES;
+  const uint8_t payload_size_increment = 1;
+  uint8_t send_payload_size = min_payload_size;
+
   while (1)
   {
 	  /*
@@ -230,21 +240,20 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if (role == 1)  {
+	  if (role == role_ping_out)  {
 
 		  radio.stopListening();                                    // First, stop listening so we can talk.
-		  //radio.printPrettyDetails();
 
-		  printf(" \r\nNow sending");
+		  printf(" \r\nNow sending %d bytes",send_payload_size);
 		  tx[0]=tx[0]+1;
 		  for (int i= 1; i<NUM_BYTES; i++){
 			  tx[i]=tx[i-1]+1;
 		  }
-		  printdata(tx);
+		  printdata(tx,send_payload_size);
 
-		  unsigned long start_time = radio.getCurrentMicros();                             // Take the time, and send it.  This will block until complete
+		  //unsigned long start_time = radio.getCurrentMicros();                             // Take the time, and send it.  This will block until complete
 
-		  if (!radio.write( &tx, NUM_BYTES )){
+		  if (!radio.write( &tx, send_payload_size)){
 			  printf("failed\r\n");
 		  } else {
 			  printf("sent ok!\r\n");
@@ -252,13 +261,10 @@ int main(void)
 
 		  radio.startListening();                                    // Now, continue listening
 
-		  unsigned long started_waiting_at = radio.getCurrentMicros();               // Set up a timeout period, get the current microseconds
-		  unsigned long istante;
 		  bool timeout = false;                                   // Set up a variable to indicate if a response was received or not
-
+		  unsigned long started_waiting_at = radio.getCurrentMicros();               // Set up a timeout period, get the current microseconds
 		  while ( ! radio.available() ){                             // While nothing is received
-			  istante = radio.getCurrentMicros();
-			  if (istante - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
+			  if (radio.getCurrentMicros() - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
 				  timeout = true;
 				  break;
 			  }
@@ -266,30 +272,36 @@ int main(void)
 
 		  if ( timeout ){                                             // Describe the results
 			  printf("Failed, response timed out. \r\n");
-		  }else{
+		  } else {
 			  printf("Success, time out has not been triggered. \r\n");
 		        uint8_t rx[NUM_BYTES];                                 // Grab the response, compare, and send to debugging spew
 		        for (int i=0 ; i< NUM_BYTES; i++){
 		          rx[i]=0;
 		        }
-		        radio.read( &rx, NUM_BYTES );
-		        //printf("Sent:\t\t");
-		        //printdata(tx);
-		        printf("Got response:\t");
-		        printdata(rx);
-		        //radio.flush_tx();
-		        //printf(", Round-trip delay \r\n");
-		        //printf(end_time-start_time);
-		        //printfln(" microseconds");
+		        uint8_t len = radio.getDynamicPayloadSize();  // get payload's length
+
+		        // If an illegal payload size was detected, all RX payloads will be flushed
+		        if (!len)
+		        	continue;
+
+		        radio.read( rx, len);
+		        //radio.read( rx, NUM_BYTES );
+		        //printf("Got response:\t");
+		        // Spew it
+		        printf("Got response size=%d, value:\t",len);
+		        printdata(rx,len);
+		        send_payload_size += payload_size_increment;    // Update size for next time.
+		        if (send_payload_size > max_payload_size)       // if payload length is larger than the radio can handle
+		        	send_payload_size = min_payload_size;         // reset the payload length
 		  }
 
-		  // Try again 1s later
+		  // Try again 100ms later
 		  //delay(100);
 	  }
 
 	  /****************** Pong Back Role ***************************/
 
-	  if ( role == 0 )
+	  if ( role == role_pong_back )
 	  {
 		  //unsigned long got_time;
 		  uint8_t rx[NUM_BYTES];                                 // Grab the response, compare, and send to debugging spew
@@ -298,22 +310,23 @@ int main(void)
 		  }
 		  if( radio.available()){
 			  while (radio.available()) {             // While there is data ready
-				  radio.read( &rx, NUM_BYTES );       // Get the payload
-				  //printf("OK%d\r\n",mmmk++);
-				  //printdata(rx);
+				  uint8_t len = radio.getDynamicPayloadSize();  // Fetch the the payload size
+				  // If an illegal payload size was detected, all RX payloads will be flushed
+				  if (!len)
+					  continue;
+
+				  radio.read(rx, len);
+
+				  //radio.read( rx, NUM_BYTES );       // Get the payload
+				  printf("Got payload size=%d, value:",len);
+				  printdata(rx,len);
+				  radio.stopListening();                                        // First, stop listening so we can talk
+				  radio.write( rx, len);              // Send the final one back.
+				  radio.startListening();                                       // Now, resume listening so we catch the next packets.
+
+				  printf("Sent response: ");
+				  printdata(rx,len);
 			  }
-
-			  //err=err+1;
-			  //printf("err%d\r\n",err);
-
-
-			  radio.stopListening();                                        // First, stop listening so we can talk
-			  radio.write( &rx, NUM_BYTES );              // Send the final one back.
-			  radio.startListening();                                       // Now, resume listening so we catch the next packets.
-
-			  printf("Sent response: ");
-			  printdata(rx);
-			  //printf(got_time);
 		  }
 	  }
 
@@ -325,21 +338,21 @@ int main(void)
 	  //printf("YOU TYPED %c %d\r\n",c,c);
 	  if (1)
 	  {
-		  if ( (c == 'T' || c=='t') && role == 0 ){
+		  if ( (c == 'T' || c=='t') && role == role_pong_back ){
 			  radio.flush_tx();
 			  radio.flush_rx();
 			  tx[0]=0;
 		  	  printf("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK\r\n");
-			  role = 1;                  // Become the primary transmitter (ping out)
+			  role = role_ping_out;                  // Become the primary transmitter (ping out)
 			  c=0;
 
 		  } else
-			  if ( (c == 'R' || c == 'r') && role == 1 ){
+			  if ( (c == 'R' || c == 'r') && role == role_ping_out ){
 				  radio.flush_tx();
 				  radio.flush_rx();
 			  	  tx[0]=0;
 			  	  printf("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK\r\n");
-				  role = 0;                // Become the primary receiver (pong back)
+				  role = role_pong_back;                // Become the primary receiver (pong back)
 				  radio.startListening();
 				  c=0;
 			  } else {

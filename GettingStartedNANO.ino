@@ -27,6 +27,10 @@ byte addresses[][6] = {"1Node", "2Node"};
 bool role = 0;
 #define NUM_BYTES 32
 uint8_t tx[NUM_BYTES];
+const int min_payload_size = 4;
+const int max_payload_size = 32;
+const int payload_size_increment = 1;
+int send_payload_size = min_payload_size;
 
 void setup() {
   for (int i = 0 ; i < NUM_BYTES; i++) {
@@ -42,12 +46,13 @@ void setup() {
   // Set the PA Level low to prevent power supply related issues since this is a
   // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
   radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  //radio.enableAckPayload();               // Allow optional ack payloads
   radio.setDataRate(RF24_2MBPS);
   radio.setPALevel(RF24_PA_MIN);
   
-  radio.setRetries(15, 15);                // Smallest time between retries, max no. of retries
-  radio.setPayloadSize(NUM_BYTES);                // Here we are sending 1-byte payloads to test the call-response speed
+  radio.setRetries(1, 15);                // Smallest time between retries, max no. of retries
+  //radio.setPayloadSize(NUM_BYTES);                // Here we are sending 1-byte payloads to test the call-response speed
+  radio.enableDynamicPayloads();
+  //radio.enableAckPayload();               // Allow optional ack payloads
 
   // Open a writing and reading pipe on each radio, with opposite addresses
   if (radioNumber) {
@@ -68,10 +73,10 @@ void setup() {
 }
 
 
-void printdata(uint8_t* dati) {
-  for (int i = 0 ; i < NUM_BYTES; i++) {
+void printdata(uint8_t* dati, uint8_t size_payload) {
+  for (int i = 0 ; i < size_payload; i++) {
     Serial.print(dati[i]);
-    if (i < (NUM_BYTES - 1)) {
+    if (i < (size_payload - 1)) {
       Serial.print(" - ");
     }
   }
@@ -85,12 +90,15 @@ void loop() {
   if (role == 1)  {
 
     radio.stopListening();                                    // First, stop listening so we can talk.
-    Serial.println(F("Now sending"));
+    Serial.print(F("Now sending "));
+    Serial.print(send_payload_size);
+    Serial.println(F("bytes."));
+         
     tx[0] = tx[0] + 1;
     for (int i = 1; i < NUM_BYTES; i++) {
       tx[i] = tx[i - 1] + 1;
     }
-    printdata(tx);
+    printdata(tx,send_payload_size);
 
     unsigned long start_time = micros();                             // Take the time, and send it.  This will block until complete
 
@@ -104,7 +112,7 @@ void loop() {
       tx[0]=tx[0]+1;
     }*/
     
-    if (!radio.write( &tx, NUM_BYTES )) {
+    if (!radio.write( &tx, send_payload_size)) {
       Serial.println(F("failed"));
     } else {
       Serial.println(F("sent OK!"));
@@ -130,15 +138,25 @@ void loop() {
       for (int i = 0 ; i < NUM_BYTES; i++) {
         rx[i] = 0;
       }
-      radio.read( &rx, NUM_BYTES );
+      uint8_t len = radio.getDynamicPayloadSize();  // get payload's length
+      // If an illegal payload size was detected, all RX payloads will be flushed
+      if (!len)
+              return;
+      radio.read( rx, len );
       //printf("Sent:\t\t");
       //printdata(tx);
-      printf("Got response:\t");
-      printdata(rx);
+      //printf("Got response:\t");
+      Serial.print(F("Got response size="));
+      Serial.print(len);
+      Serial.print(F(" value:\t"));
+      printdata(rx,len);
+      send_payload_size += payload_size_increment;    // Update size for next time.
+      if (send_payload_size > max_payload_size)       // if payload length is larger than the radio can handle
+        send_payload_size = min_payload_size;         // reset the payload length
     }
 
-    // Try again 1s later
-    //delay(10);
+    // Try again 100 ms later
+    delay(100);
   }
 
   /****************** Pong Back Role ***************************/
@@ -151,16 +169,26 @@ void loop() {
       rx[i] = 0;
     }
 
-    if ( radio.available()) {
-      // Variable for the received timestamp
-      while (radio.available()) {                                   // While there is data ready
-         radio.read( &rx, NUM_BYTES );       // Get the payload
-      }
+    if ( radio.available()) {      
+      while (radio.available()) {                                   // While there is data read
+        uint8_t len = radio.getDynamicPayloadSize();  // Fetch the the payload size
+          // If an illegal payload size was detected, all RX payloads will be flushed
+          if (!len)
+            continue;
+
+        radio.read(rx, len);
+        //radio.read( &rx, NUM_BYTES );       // Get the payload
+        Serial.print(F("Got payload size="));
+        Serial.print(len);
+        Serial.print(F("value:"));
+        printdata(rx,len);
+
         radio.stopListening();                                        // First, stop listening so we can talk
-        radio.write( &rx, NUM_BYTES );              // Send the final one back.
+        radio.write( rx, len );              // Send the final one back.
         radio.startListening();                                       // Now, resume listening so we catch the next packets.
         printf("Sent response: ");
-        printdata(rx);
+        printdata(rx, len);
+      }
     }
   }        
         
